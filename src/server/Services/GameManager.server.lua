@@ -1,100 +1,121 @@
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
--- Paths
-local ArenasFolder = ReplicatedStorage:WaitForChild("Arenas")
-local LobbySpawnsFolder = workspace
-	:WaitForChild("Lobby")
-	:WaitForChild("Spawns")
+-- Config
+local GameConfig = require(
+	ReplicatedStorage
+		:WaitForChild("Shared")
+		:WaitForChild("Config")
+		:WaitForChild("GameConfig")
+)
 
--- State
-local currentArena = nil
-local arenaSpawns = {}
+-- =========================
+-- GROUNDS
+-- =========================
 
--- Utils
-local function getRandomFromTable(t)
-	return t[math.random(1, #t)]
-end
+local function getGrounds(arena)
+	local groundsFolder = arena:WaitForChild("Grounds")
+	local grounds = {}
 
-local function getLobbySpawns()
-	local spawns = {}
-	for _, obj in ipairs(LobbySpawnsFolder:GetChildren()) do
-		if obj:IsA("SpawnLocation") then
-			table.insert(spawns, obj)
-		end
-	end
-	return spawns
-end
-
-local function getArenaSpawns(arena)
-	local spawnsFolder = arena:WaitForChild("Spawns")
-	local spawns = {}
-
-	for _, obj in ipairs(spawnsFolder:GetChildren()) do
-		if obj:IsA("SpawnLocation") then
-			table.insert(spawns, obj)
+	for _, obj in ipairs(groundsFolder:GetChildren()) do
+		if obj:IsA("Model") and obj.PrimaryPart then
+			table.insert(grounds, obj)
 		end
 	end
 
-	return spawns
+	return grounds
 end
 
-local function teleportCharacter(character, spawnLocation)
-	local hrp = character:WaitForChild("HumanoidRootPart")
-	hrp.CFrame = spawnLocation.CFrame + Vector3.new(0, 3, 0)
-end
-
--- Arena Control
-local function loadArena(arenaName)
-	if currentArena then
-		currentArena:Destroy()
-		currentArena = nil
+local function shuffle(t)
+	for i = #t, 2, -1 do
+		local j = math.random(i)
+		t[i], t[j] = t[j], t[i]
 	end
-
-	local arenaTemplate = ArenasFolder:WaitForChild(arenaName)
-	currentArena = arenaTemplate:Clone()
-	currentArena.Parent = workspace
-
-	arenaSpawns = getArenaSpawns(currentArena)
 end
 
-local function teleportPlayersToArena()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			local spawn = getRandomFromTable(arenaSpawns)
-			teleportCharacter(player.Character, spawn)
+local function warnGround(ground)
+	local part = ground.PrimaryPart
+	if not part then return end
+
+	-- efeito simples de warning (pode evoluir depois)
+	local tween = TweenService:Create(
+		part,
+		TweenInfo.new(GameConfig.GROUND_WARNING_TIME, Enum.EasingStyle.Sine),
+		{ Transparency = 0.5 }
+	)
+	tween:Play()
+end
+
+local function dropGround(ground)
+	if not ground.PrimaryPart then return end
+
+	for _, desc in ipairs(ground:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			desc.Anchored = false
+			desc.CanCollide = false
 		end
 	end
 end
 
-local function teleportPlayersToLobby()
-	local lobbySpawns = getLobbySpawns()
+-- =========================
+-- PLAYER CHECK
+-- =========================
+
+local function getAlivePlayers()
+	local alive = {}
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			local spawn = getRandomFromTable(lobbySpawns)
-			teleportCharacter(player.Character, spawn)
+		local character = player.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				table.insert(alive, player)
+			end
 		end
 	end
+
+	return alive
 end
 
--- Test flow (temporário)
-task.delay(5, function()
-	print("Carregando Arena_01...")
-	loadArena("Arena_01")
+-- =========================
+-- CORE LOOP
+-- =========================
 
-	task.wait(2)
+local function startGroundLoop(arena)
+	local grounds = getGrounds(arena)
+	shuffle(grounds)
 
-	print("Teleportando jogadores para arena...")
-	teleportPlayersToArena()
+	local index = 1
 
-	task.wait(15)
+	while index <= #grounds do
+		-- condição de vitória
+		if #getAlivePlayers() <= 1 then
+			break
+		end
 
-	print("Voltando jogadores para o lobby...")
-	teleportPlayersToLobby()
+		-- selecionar grounds do ciclo
+		local batch = {}
+		for i = 1, GameConfig.GROUNDS_PER_CYCLE do
+			if grounds[index] then
+				table.insert(batch, grounds[index])
+				index += 1
+			end
+		end
 
-	if currentArena then
-		currentArena:Destroy()
+		-- warning
+		for _, ground in ipairs(batch) do
+			warnGround(ground)
+		end
+
+		task.wait(GameConfig.GROUND_WARNING_TIME)
+
+		-- drop
+		for _, ground in ipairs(batch) do
+			dropGround(ground)
+		end
+
+		task.wait(GameConfig.GROUND_FALL_INTERVAL)
 	end
-end)
+end
