@@ -3,6 +3,7 @@
 -- Utilidades para manipulação segura de Characters
 -- =====================================================
 
+local RunService = game:GetService("RunService")
 local CharacterUtils = {}
 
 -- =====================================================
@@ -16,18 +17,42 @@ function CharacterUtils.ResetCharacterState(character)
 
 	if not humanoid or not hrp then return end
 
-	-- Sai do estado sentado (Seat / VehicleSeat)
+	-- 1️⃣ Força saída do estado sentado
 	humanoid.Sit = false
 
-	-- Força transição de estado para soltar qualquer constraint invisível
-	humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+	-- 2️⃣ Remove referência ao assento (CRÍTICO)
+	if humanoid.SeatPart then
+		humanoid.SeatPart:Sit(nil)
+	end
 
-	-- Zera forças residuais
+	-- 3️⃣ Garante que o personagem não está travado
+	humanoid.PlatformStand = false
+	humanoid.AutoRotate = true
+
+	-- 4️⃣ Zera forças residuais
 	hrp.AssemblyLinearVelocity = Vector3.zero
 	hrp.AssemblyAngularVelocity = Vector3.zero
 
-	-- Garante estado padrão de movimento
-	humanoid:ChangeState(Enum.HumanoidStateType.Running)
+	-- 5️⃣ Força estados físicos válidos
+	humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+	-- 6️⃣ Reforço por alguns frames (EVITA RE-SIT)
+	local frames = 0
+	local conn
+	conn = RunService.Heartbeat:Connect(function()
+		if frames >= 5 then
+			conn:Disconnect()
+			return
+		end
+
+		humanoid.Sit = false
+		humanoid.PlatformStand = false
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+		frames += 1
+	end)
 end
 
 -- =====================================================

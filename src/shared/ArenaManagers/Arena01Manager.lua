@@ -103,30 +103,51 @@ local function warnGround(ground)
 	):Play()
 end
 
-local function dropGround(ground)
-	for _, part in ipairs(ground:GetDescendants()) do
-		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.CanCollide = false
+local function dropGrounds(batch)
+	for _, ground in ipairs(batch) do
+		for _, part in ipairs(ground:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Anchored = false
+				part.CanCollide = false
+			end
 		end
 	end
 end
+
 
 local function startGroundLoop(self)
 	task.spawn(function()
 		self:Shuffle(grounds)
 
-		for _, ground in ipairs(grounds) do
+		local index = 1
+
+		while index <= #grounds do
 			if not self.Running then return end
 
-			warnGround(ground)
+			-- Monta o batch
+			local batch = {}
+			for i = 1, ArenaConfig.GROUNDS_PER_CYCLE do
+				if grounds[index] then
+					table.insert(batch, grounds[index])
+					index += 1
+				end
+			end
+
+			-- Warning visual
+			for _, ground in ipairs(batch) do
+				warnGround(ground)
+			end
+
 			task.wait(ArenaConfig.GROUND_WARNING_TIME)
 
-			dropGround(ground)
+			-- Derruba o batch
+			dropGrounds(batch)
+
 			task.wait(ArenaConfig.GROUND_FALL_INTERVAL)
 		end
 	end)
 end
+
 
 -- =====================================================
 -- OVERRIDES
