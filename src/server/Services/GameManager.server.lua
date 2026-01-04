@@ -1,4 +1,4 @@
-print("✅ GameManager carregado")
+print("🚀 Inicializando GameState")
 
 -- =========================
 -- SERVICES
@@ -33,7 +33,13 @@ local GameState = {
 	ENDING = "ENDING",
 }
 
+-- =========================
+-- VARS
+-- =========================
+
 local currentState = nil
+local MIN_PLAYERS = GameConfig.MIN_PLAYERS
+
 
 -- =========================
 -- LOBBY SPAWNS
@@ -73,9 +79,22 @@ end
 -- TELEPORT
 -- =========================
 local function teleportCharacter(character, spawnLocation)
-	local hrp = character:WaitForChild("HumanoidRootPart")
+	if not character then return end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
+
+	if not hrp then
+		return
+	end
+
 	hrp.CFrame = spawnLocation.CFrame + Vector3.new(0, 3, 0)
 end
+
 
 local function teleportPlayersToLobby()
 	local lobbySpawns = getLobbySpawns()
@@ -87,7 +106,9 @@ local function teleportPlayersToLobby()
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character then
 			local spawn = lobbySpawns[math.random(1, #lobbySpawns)]
-			teleportCharacter(player.Character, spawn)
+			if player.Character and player.Character.Parent then
+				teleportCharacter(player.Character, spawn)
+			end
 		end
 	end
 end
@@ -123,6 +144,11 @@ local function getGrounds(arena)
 	local grounds = {}
 
 	for _, obj in ipairs(groundsFolder:GetChildren()) do
+
+		if obj.PrimaryPart == nil then
+			obj.PrimaryPart = obj:WaitForChild("Part")
+		end
+		
 		if obj:IsA("Model") and obj.PrimaryPart then
 			table.insert(grounds, obj)
 		end
@@ -160,13 +186,16 @@ local function dropGround(ground)
 end
 
 local function startGroundLoop(arena)
+	
+	print("🔄 Iniciando loop de chão")
+
 	local grounds = getGrounds(arena)
 	shuffle(grounds)
 
 	local index = 1
 
 	while index <= #grounds do
-		if #Players:GetPlayers() <= 1 then
+		if #Players:GetPlayers() <= 0 then
 			break
 		end
 
@@ -205,19 +234,26 @@ local function resetMatchState()
 	alivePlayers = {}
 end
 
-local function getWinner()
+local function getWinner()	
 	for player, alive in pairs(alivePlayers) do
 		if alive then
 			return player
 		end
 	end
+
+	return nil
 end
 
 local function declareVictory(player)
 	if victoryDeclared then return end
 	victoryDeclared = true
+	
+	if player then
+		print("🏆 VENCEDOR:", player.Name)
+	else
+		print("Dessa vez não tivemos vencedores")
+	end
 
-	print("🏆 VENCEDOR:", player.Name)
 	setGameState(GameState.ENDING)
 end
 
@@ -229,12 +265,11 @@ local function checkVictoryCondition()
 		end
 	end
 
-	if aliveCount == 1 then
+	if aliveCount <= 1 then
 		local winner = getWinner()
-		if winner then
-			declareVictory(winner)
-		end
+		declareVictory(winner)		
 	end
+
 end
 
 -- =========================
@@ -293,7 +328,9 @@ onPlayingState = function()
 	registerPlayers()
 
 	task.spawn(function()
-		startGroundLoop(currentArena)
+		if matchRunning then
+			startGroundLoop(currentArena)
+		end
 	end)
 end
 
@@ -329,9 +366,40 @@ function setGameState(newState)
 	end
 end
 
+local function canStartMatch()
+	return #Players:GetPlayers() >= MIN_PLAYERS
+end
+
+local function tryStartGame()
+	if canStartMatch() then
+		print("👥 Jogadores suficientes. Iniciando jogo.")
+		setGameState(GameState.WAITING)
+	else
+		print("⏳ Aguardando jogadores... (" .. #Players:GetPlayers() .. "/" .. MIN_PLAYERS .. ")")
+	end
+end
+
 -- =========================
 -- BOOT
 -- =========================
-print("🚀 Inicializando GameState")
+
+print("✅ GameManager carregado")
+
 task.wait(2)
-setGameState(GameState.WAITING)
+tryStartGame()
+
+Players.PlayerAdded:Connect(function(player)
+	print("➕ Jogador entrou:", player.Name)
+	task.wait(1) -- garante Character
+	tryStartGame()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	print("➖ Jogador saiu:", player.Name)
+
+	-- Se cair para menos do mínimo durante WAITING ou PLAYING
+	if #Players:GetPlayers() - 1 < MIN_PLAYERS then
+		print("⚠️ Jogadores insuficientes, retornando ao lobby")
+		setGameState(GameState.WAITING)
+	end
+end)
