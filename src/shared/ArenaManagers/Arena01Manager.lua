@@ -22,6 +22,14 @@ local ArenaBase = require(
 		:WaitForChild("ArenaBase")
 )
 
+local CharacterUtils = require(
+	ReplicatedStorage
+		:WaitForChild("Shared")
+		:WaitForChild("Utils")
+		:WaitForChild("CharacterUtils")
+)
+
+
 local Arena01Manager = {}
 Arena01Manager.__index = Arena01Manager
 setmetatable(Arena01Manager, ArenaBase)
@@ -148,12 +156,12 @@ function Arena01Manager:Start(players)
 
 	for _, player in ipairs(players) do
 		if player.Character then
-			local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-			if hrp and #spawns > 0 then
-				hrp.CFrame = spawns[math.random(#spawns)].CFrame + Vector3.new(0, 3, 0)
-			end
+			CharacterUtils.SafeTeleport(
+				player.Character,
+				spawns[math.random(#spawns)].CFrame
+			)
 		end
-	end
+	end	
 
 	startGroundLoop(self)
 end
