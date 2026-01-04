@@ -119,3 +119,103 @@ local function startGroundLoop(arena)
 		task.wait(GameConfig.GROUND_FALL_INTERVAL)
 	end
 end
+
+-- =========================
+-- VICTORY SYSTEM
+-- =========================
+
+local matchRunning = false
+local alivePlayers = {}
+local victoryDeclared = false
+
+local function resetMatchState()
+	matchRunning = false
+	victoryDeclared = false
+	alivePlayers = {}
+end
+
+local function getWinner()
+	for player, isAlive in pairs(alivePlayers) do
+		if isAlive then
+			return player
+		end
+	end
+	return nil
+end
+
+local function declareVictory(player)
+	if victoryDeclared then return end
+	victoryDeclared = true
+
+	print("🏆 VENCEDOR:", player.Name)
+
+	-- Aqui no futuro:
+	-- • UI de vitória
+	-- • Rewards / Coins
+	-- • Stats
+	-- • Leaderboard
+
+	task.delay(GameConfig.END_MATCH_DELAY, function()
+		-- Volta jogadores para o lobby
+		teleportPlayersToLobby()
+
+		-- Limpa arena
+		if currentArena then
+			currentArena:Destroy()
+			currentArena = nil
+		end
+
+		resetMatchState()
+	end)
+end
+
+local function checkVictoryCondition()
+	if victoryDeclared then return end
+
+	local aliveCount = 0
+	for _, isAlive in pairs(alivePlayers) do
+		if isAlive then
+			aliveCount += 1
+		end
+	end
+
+	if aliveCount == 1 then
+		local winner = getWinner()
+		if winner then
+			declareVictory(winner)
+		end
+	end
+end
+
+-- =========================
+-- PLAYER TRACKING
+-- =========================
+
+local function onCharacterAdded(player, character)
+	local humanoid = character:WaitForChild("Humanoid")
+
+	alivePlayers[player] = true
+
+	humanoid.Died:Connect(function()
+		alivePlayers[player] = false
+		print("💀 Eliminado:", player.Name)
+		checkVictoryCondition()
+	end)
+end
+
+local function registerPlayers()
+	alivePlayers = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			onCharacterAdded(player, player.Character)
+		end
+
+		player.CharacterAdded:Connect(function(character)
+			if matchRunning then
+				onCharacterAdded(player, character)
+			end
+		end)
+	end
+end
+
