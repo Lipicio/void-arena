@@ -1,0 +1,17 @@
+# Project place file
+/Void Arena.rbxlx
+
+sourcemap.json
+
+# Rojo / Roblox
+*.rbxl
+*.rbxl.lock
+*.rbxm
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.cursor/
