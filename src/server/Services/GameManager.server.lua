@@ -18,13 +18,6 @@ local GameConfig = require(
 )
 
 -- =========================
--- STATE FORWARD DECLARATION
--- =========================
-local onWaitingState
-local onPlayingState
-local onEndingState
-
--- =========================
 -- GAME STATE
 -- =========================
 local GameState = {
@@ -33,29 +26,39 @@ local GameState = {
 	ENDING = "ENDING",
 }
 
--- =========================
--- VARS
--- =========================
-
 local currentState = nil
-local MIN_PLAYERS = GameConfig.MIN_PLAYERS
-
+local MIN_PLAYERS = GameConfig.MIN_PLAYERS or 1
 
 -- =========================
--- LOBBY SPAWNS
+-- MATCH VARS
 -- =========================
-local LobbySpawnsFolder = workspace
-	:WaitForChild("Lobby")
-	:WaitForChild("Spawns")
+local matchRunning = false
+local alivePlayers = {}
+local victoryDeclared = false
+
+-- =========================
+-- LOBBY
+-- =========================
+local LobbySpawnsFolder = workspace:WaitForChild("Lobby"):WaitForChild("Spawns")
 
 local function getLobbySpawns()
-	local spawns = {}
-	for _, obj in ipairs(LobbySpawnsFolder:GetChildren()) do
-		if obj:IsA("SpawnLocation") then
-			table.insert(spawns, obj)
+	local t = {}
+	for _, s in ipairs(LobbySpawnsFolder:GetChildren()) do
+		if s:IsA("SpawnLocation") then
+			table.insert(t, s)
 		end
 	end
-	return spawns
+	return t
+end
+
+local function teleportToLobby(character)
+	local spawns = getLobbySpawns()
+	if #spawns == 0 then return end
+
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	hrp.CFrame = spawns[math.random(#spawns)].CFrame + Vector3.new(0, 3, 0)
 end
 
 -- =========================
@@ -64,74 +67,31 @@ end
 local ArenasFolder = ReplicatedStorage:WaitForChild("Arenas")
 local currentArena = nil
 
-local function loadArena(arenaName)
+local function loadArena(name)
 	if currentArena then
 		currentArena:Destroy()
-		currentArena = nil
 	end
 
-	local arenaTemplate = ArenasFolder:WaitForChild(arenaName)
-	currentArena = arenaTemplate:Clone()
+	currentArena = ArenasFolder:WaitForChild(name):Clone()
 	currentArena.Parent = workspace
 end
 
--- =========================
--- TELEPORT
--- =========================
-local function teleportCharacter(character, spawnLocation)
-	if not character then return end
-
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local hrp = character:FindFirstChild("HumanoidRootPart")
-
-	if not humanoid or humanoid.Health <= 0 then
-		return
-	end
-
-	if not hrp then
-		return
-	end
-
-	hrp.CFrame = spawnLocation.CFrame + Vector3.new(0, 3, 0)
-end
-
-
-local function teleportPlayersToLobby()
-	local lobbySpawns = getLobbySpawns()
-	if #lobbySpawns == 0 then
-		warn("⚠️ Nenhum Lobby Spawn encontrado")
-		return
-	end
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			local spawn = lobbySpawns[math.random(1, #lobbySpawns)]
-			if player.Character and player.Character.Parent then
-				teleportCharacter(player.Character, spawn)
-			end
-		end
-	end
-end
-
 local function teleportPlayersToArena()
-	if not currentArena then
-		warn("❌ Arena não carregada")
-		return
-	end
+	if not currentArena then return end
 
-	local spawnsFolder = currentArena:WaitForChild("Spawns")
 	local spawns = {}
-
-	for _, obj in ipairs(spawnsFolder:GetChildren()) do
-		if obj:IsA("SpawnLocation") then
-			table.insert(spawns, obj)
+	for _, s in ipairs(currentArena:WaitForChild("Spawns"):GetChildren()) do
+		if s:IsA("SpawnLocation") then
+			table.insert(spawns, s)
 		end
 	end
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character and #spawns > 0 then
-			local spawn = spawns[math.random(1, #spawns)]
-			teleportCharacter(player.Character, spawn)
+			local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				hrp.CFrame = spawns[math.random(#spawns)].CFrame + Vector3.new(0, 3, 0)
+			end
 		end
 	end
 end
@@ -140,21 +100,16 @@ end
 -- GROUNDS
 -- =========================
 local function getGrounds(arena)
-	local groundsFolder = arena:WaitForChild("Grounds")
-	local grounds = {}
-
-	for _, obj in ipairs(groundsFolder:GetChildren()) do
-
-		if obj.PrimaryPart == nil then
-			obj.PrimaryPart = obj:WaitForChild("Part")
-		end
-		
-		if obj:IsA("Model") and obj.PrimaryPart then
-			table.insert(grounds, obj)
+	local list = {}
+	for _, m in ipairs(arena:WaitForChild("Grounds"):GetChildren()) do
+		if m:IsA("Model") then
+			m.PrimaryPart = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+			if m.PrimaryPart then
+				table.insert(list, m)
+			end
 		end
 	end
-
-	return grounds
+	return list
 end
 
 local function shuffle(t)
@@ -164,180 +119,146 @@ local function shuffle(t)
 	end
 end
 
-local function warnGround(ground)
-	local part = ground.PrimaryPart
-	if not part then return end
+local function warnGround(g)
+	local p = g.PrimaryPart
+	if not p then return end
 
-	local tween = TweenService:Create(
-		part,
-		TweenInfo.new(GameConfig.GROUND_WARNING_TIME, Enum.EasingStyle.Sine),
+	TweenService:Create(
+		p,
+		TweenInfo.new(GameConfig.GROUND_WARNING_TIME),
 		{ Transparency = 0.5 }
-	)
-	tween:Play()
+	):Play()
 end
 
-local function dropGround(ground)
-	for _, desc in ipairs(ground:GetDescendants()) do
-		if desc:IsA("BasePart") then
-			desc.Anchored = false
-			desc.CanCollide = false
+local function dropGround(g)
+	for _, d in ipairs(g:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = false
+			d.CanCollide = false
 		end
 	end
 end
 
 local function startGroundLoop(arena)
-	
 	print("🔄 Iniciando loop de chão")
 
 	local grounds = getGrounds(arena)
 	shuffle(grounds)
 
-	local index = 1
-
-	while index <= #grounds do
-		if #Players:GetPlayers() <= 0 then
-			break
+	for _, g in ipairs(grounds) do
+		if not matchRunning then
+			print("🛑 Loop do chão interrompido")
+			return
 		end
 
-		local batch = {}
-		for i = 1, GameConfig.GROUNDS_PER_CYCLE do
-			if grounds[index] then
-				table.insert(batch, grounds[index])
-				index += 1
-			end
-		end
-
-		for _, ground in ipairs(batch) do
-			warnGround(ground)
-		end
-
+		warnGround(g)
 		task.wait(GameConfig.GROUND_WARNING_TIME)
-
-		for _, ground in ipairs(batch) do
-			dropGround(ground)
-		end
-
+		dropGround(g)
 		task.wait(GameConfig.GROUND_FALL_INTERVAL)
 	end
 end
 
 -- =========================
--- VICTORY SYSTEM
+-- VICTORY
 -- =========================
-local matchRunning = false
-local alivePlayers = {}
-local victoryDeclared = false
+local function checkVictory()
+	if not matchRunning or victoryDeclared then return end
 
-local function resetMatchState()
-	matchRunning = false
-	victoryDeclared = false
-	alivePlayers = {}
-end
+	local alive = 0
+	local last
 
-local function getWinner()	
-	for player, alive in pairs(alivePlayers) do
-		if alive then
-			return player
+	for p, isAlive in pairs(alivePlayers) do
+		if isAlive then
+			alive += 1
+			last = p
 		end
 	end
 
-	return nil
-end
+	if alive <= 1 then
+		victoryDeclared = true
+		matchRunning = false
 
-local function declareVictory(player)
-	if victoryDeclared then return end
-	victoryDeclared = true
-	
-	if player then
-		print("🏆 VENCEDOR:", player.Name)
-	else
-		print("Dessa vez não tivemos vencedores")
-	end
-
-	setGameState(GameState.ENDING)
-end
-
-local function checkVictoryCondition()
-	local aliveCount = 0
-	for _, alive in pairs(alivePlayers) do
-		if alive then
-			aliveCount += 1
+		if last then
+			print("🏆 VENCEDOR:", last.Name)
+		else
+			print("⚠️ Rodada sem vencedor")
 		end
-	end
 
-	if aliveCount <= 1 then
-		local winner = getWinner()
-		declareVictory(winner)		
+		setGameState(GameState.ENDING)
 	end
-
 end
 
 -- =========================
--- PLAYER TRACKING
+-- PLAYER LIFECYCLE
 -- =========================
 local function onCharacterAdded(player, character)
 	local humanoid = character:WaitForChild("Humanoid")
+
+	if currentState ~= GameState.PLAYING then
+		task.wait()
+		teleportToLobby(character)
+		return
+	end
+
 	alivePlayers[player] = true
 
 	humanoid.Died:Connect(function()
+		if not alivePlayers[player] then return end
 		alivePlayers[player] = false
 		print("💀 Eliminado:", player.Name)
-		checkVictoryCondition()
+		checkVictory()
 	end)
 end
 
-local function registerPlayers()
-	alivePlayers = {}
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			onCharacterAdded(player, player.Character)
-		end
-
-		player.CharacterAdded:Connect(function(character)
-			if matchRunning then
-				onCharacterAdded(player, character)
-			end
-		end)
-	end
-end
-
 -- =========================
--- GAME STATE HANDLERS
+-- GAME STATES
 -- =========================
-onWaitingState = function()
+local function onWaiting()
 	print("🟢 ESTADO: WAITING")
 
-	resetMatchState()
-	teleportPlayersToLobby()
+	matchRunning = false
+	victoryDeclared = false
+	alivePlayers = {}
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			teleportToLobby(p.Character)
+		end
+	end
 
 	task.delay(GameConfig.LOBBY_WAIT_TIME, function()
 		if currentState == GameState.WAITING then
-			print("⏱️ Iniciando partida")
 			setGameState(GameState.PLAYING)
 		end
 	end)
 end
 
-onPlayingState = function()
+local function onPlaying()
 	print("🔴 ESTADO: PLAYING")
 
 	matchRunning = true
+	victoryDeclared = false
+	alivePlayers = {}
+
 	loadArena("Arena_01")
 	teleportPlayersToArena()
-	registerPlayers()
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			onCharacterAdded(p, p.Character)
+		end
+		p.CharacterAdded:Connect(function(c)
+			onCharacterAdded(p, c)
+		end)
+	end
 
 	task.spawn(function()
-		if matchRunning then
-			startGroundLoop(currentArena)
-		end
+		startGroundLoop(currentArena)
 	end)
 end
 
-onEndingState = function()
+local function onEnding()
 	print("🟡 ESTADO: ENDING")
-
-	matchRunning = false
 
 	task.delay(GameConfig.END_MATCH_DELAY, function()
 		if currentArena then
@@ -349,57 +270,38 @@ onEndingState = function()
 end
 
 -- =========================
--- GAME STATE CORE
+-- STATE CORE
 -- =========================
-function setGameState(newState)
-	if currentState == newState then return end
+function setGameState(state)
+	if currentState == state then return end
 
-	print("🔄 GameState:", currentState, "->", newState)
-	currentState = newState
+	print("🔄 GameState:", currentState, "->", state)
+	currentState = state
 
-	if newState == GameState.WAITING then
-		onWaitingState()
-	elseif newState == GameState.PLAYING then
-		onPlayingState()
-	elseif newState == GameState.ENDING then
-		onEndingState()
-	end
-end
-
-local function canStartMatch()
-	return #Players:GetPlayers() >= MIN_PLAYERS
-end
-
-local function tryStartGame()
-	if canStartMatch() then
-		print("👥 Jogadores suficientes. Iniciando jogo.")
-		setGameState(GameState.WAITING)
-	else
-		print("⏳ Aguardando jogadores... (" .. #Players:GetPlayers() .. "/" .. MIN_PLAYERS .. ")")
+	if state == GameState.WAITING then
+		onWaiting()
+	elseif state == GameState.PLAYING then
+		onPlaying()
+	elseif state == GameState.ENDING then
+		onEnding()
 	end
 end
 
 -- =========================
 -- BOOT
 -- =========================
-
 print("✅ GameManager carregado")
 
 task.wait(2)
-tryStartGame()
 
-Players.PlayerAdded:Connect(function(player)
-	print("➕ Jogador entrou:", player.Name)
-	task.wait(1) -- garante Character
-	tryStartGame()
-end)
+if #Players:GetPlayers() >= MIN_PLAYERS then
+	setGameState(GameState.WAITING)
+else
+	print("⏳ Aguardando jogadores")
+end
 
-Players.PlayerRemoving:Connect(function(player)
-	print("➖ Jogador saiu:", player.Name)
-
-	-- Se cair para menos do mínimo durante WAITING ou PLAYING
-	if #Players:GetPlayers() - 1 < MIN_PLAYERS then
-		print("⚠️ Jogadores insuficientes, retornando ao lobby")
+Players.PlayerAdded:Connect(function()
+	if #Players:GetPlayers() >= MIN_PLAYERS then
 		setGameState(GameState.WAITING)
 	end
 end)
