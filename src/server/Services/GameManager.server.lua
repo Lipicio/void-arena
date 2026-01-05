@@ -164,25 +164,6 @@ local function bindPlayers()
 end
 
 -- =====================================================
--- ARENA SELECTION
--- =====================================================
-local function loadArenaManager(arenaName)
-	if currentArenaManager then
-		currentArenaManager:Stop()
-		currentArenaManager:Destroy()
-		currentArenaManager = nil
-	end
-
-	local arenaModule = ArenaManagersFolder:WaitForChild(arenaName)
-	currentArenaManager = require(arenaModule)
-
-	-- Callback injetado no ArenaManager
-	currentArenaManager.OnPlayerKilled = onPlayerKilled
-
-	currentArenaManager:Load()
-end
-
--- =====================================================
 -- GAME STATES
 -- =====================================================
 local function onWaitingState()
