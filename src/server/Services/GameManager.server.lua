@@ -44,7 +44,6 @@ local victoryDeclared = false
 -- ARENA MANAGEMENT
 -- =====================================================
 local currentArenaManager = nil
-local ArenaManagersFolder = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaManagers")
 
 -- =====================================================
 -- LOBBY
@@ -203,12 +202,7 @@ local function onPlayingState()
 	victoryDeclared = false
 	resetAlivePlayers()
 
-	local ArenaRegistry = require(
-	ReplicatedStorage
-			:WaitForChild("Shared")
-			:WaitForChild("ArenaManagers")
-			:WaitForChild("ArenaRegistry")
-	)
+	local ArenaRegistry = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaManagers"):WaitForChild("ArenaRegistry"))
 
 	currentArenaManager = ArenaRegistry:CreateArenaManager()
 	currentArenaManager.OnPlayerKilled = onPlayerKilled
