@@ -16,6 +16,11 @@ local GameConfig = require(
 		:WaitForChild("GameConfig")
 )
 
+local CountdownEvent = ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Remotes")
+	:WaitForChild("RoundCountdown")
+
 -- =====================================================
 -- GAME STATE
 -- =====================================================
@@ -185,11 +190,25 @@ local function onWaitingState()
 
 	matchRunning = false
 	victoryDeclared = false
-	resetAlivePlayers()
 
-	teleportAllToLobby()
+	local waitTime = GameConfig.LOBBY_WAIT_TIME
 
-	task.delay(GameConfig.LOBBY_WAIT_TIME, function()
+	-- 🔔 Inicia countdown no client
+	CountdownEvent:FireAllClients("start", waitTime)
+
+	task.spawn(function()
+		for t = waitTime, 1, -1 do
+			if currentState ~= GameState.WAITING then
+				CountdownEvent:FireAllClients("stop")
+				return
+			end
+
+			CountdownEvent:FireAllClients("update", t)
+			task.wait(1)
+		end
+
+		CountdownEvent:FireAllClients("stop")
+
 		if currentState == GameState.WAITING then
 			setGameState(GameState.PLAYING)
 		end
@@ -220,6 +239,9 @@ end
 
 local function onEndingState()
 	print("🟡 ESTADO: ENDING")
+
+	resetAlivePlayers()
+	teleportAllToLobby()
 
 	task.delay(GameConfig.END_MATCH_DELAY, function()
 		if currentArenaManager then

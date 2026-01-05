@@ -11,6 +11,6 @@ GameConfig.MIN_PLAYERS = 1
 GameConfig.LOBBY_WAIT_TIME = 15
 
 -- Tempo após vitória antes de resetar
-GameConfig.END_MATCH_DELAY = 2
+GameConfig.END_MATCH_DELAY = 5
 
 return GameConfig
