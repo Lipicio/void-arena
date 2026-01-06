@@ -6,9 +6,13 @@ local ControllersFolder = player:WaitForChild("PlayerScripts"):WaitForChild("Cli
 for _, controller in ipairs(ControllersFolder:GetChildren()) do
 	if controller:IsA("ModuleScript") then
 		task.spawn(function()
-			require(controller)
+			local ok, result = pcall(require, controller)
+			if not ok then
+				warn("❌ Erro ao carregar controller:", controller.Name, result)
+			end
 		end)
 	end
 end
+
 
 print("[Client] Controllers carregados")
