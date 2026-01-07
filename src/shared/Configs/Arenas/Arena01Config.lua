@@ -1,5 +1,7 @@
 local Arena01Config = {}
 
+Arena01Config.NAME = "Arena 01"
+
 -- =========================
 -- GROUND MECHANIC (ARENA 01)
 -- =========================

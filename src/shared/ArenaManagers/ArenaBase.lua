@@ -9,12 +9,13 @@ ArenaBase.__index = ArenaBase
 -- =====================================================
 -- CONSTRUCTOR
 -- =====================================================
-function ArenaBase.new(arenaName)
+function ArenaBase.new(arenaName, config)
 	local self = setmetatable({}, ArenaBase)
 
 	self.ArenaName = arenaName
 	self.ArenaModel = nil
 	self.Running = false
+	self.Config = config
 
 	-- Callback injetado pelo GameManager
 	self.OnPlayerKilled = nil

@@ -21,6 +21,31 @@ local CountdownEvent = ReplicatedStorage
 	:WaitForChild("Remotes")
 	:WaitForChild("RoundCountdown")
 
+local ArenaInfoEvent = ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Remotes")
+	:WaitForChild("ArenaInfo")
+
+local AliveCountEvent = ReplicatedStorage
+	:WaitForChild("Shared")
+	:WaitForChild("Remotes")
+	:WaitForChild("AliveCount")
+
+local Utils = require(
+	ReplicatedStorage
+		:WaitForChild("Shared")
+		:WaitForChild("Utils")
+		:WaitForChild("Utils")
+)
+
+local SoundService = game:GetService("SoundService")
+
+local music = Instance.new("Sound")
+music.Name = "BackgroundMusic"
+music.Looped = true
+music.Volume = 0.4
+music.Parent = SoundService
+
 -- =====================================================
 -- GAME STATE
 -- =====================================================
@@ -126,6 +151,12 @@ local function onPlayerKilled(player)
 	print("💀 Eliminado:", player.Name)
 
 	local aliveCount, lastAlive = getAliveCount()
+
+	AliveCountEvent:FireAllClients({
+		alive = getAliveCount(),
+		total = Utils.tableSize(alivePlayers)
+	})
+
 	if aliveCount <= 1 then
 		declareVictory(lastAlive)
 	end
@@ -204,12 +235,25 @@ local function onPlayingState()
 
 	local ArenaRegistry = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaManagers"):WaitForChild("ArenaRegistry"))
 
-	currentArenaManager = ArenaRegistry:CreateArenaManager()
+	currentArenaManager = ArenaRegistry:CreateArenaManager()	
 	currentArenaManager.OnPlayerKilled = onPlayerKilled
 	currentArenaManager:Load()
-
 	currentArenaManager:Start(Players:GetPlayers())
+
+	local ids = GameConfig.MUSIC_IDS
+	music.SoundId = ids[math.random(#ids)]
+	music:Play()
+
 	bindPlayers()
+
+	ArenaInfoEvent:FireAllClients({
+		name = currentArenaManager.Config.NAME		
+	})
+
+	AliveCountEvent:FireAllClients({
+		alive = getAliveCount(),
+		total = Utils.tableSize(alivePlayers)
+	})
 end
 
 local function onEndingState()
@@ -217,6 +261,11 @@ local function onEndingState()
 
 	resetAlivePlayers()
 	teleportAllToLobby()
+
+	AliveCountEvent:FireAllClients({
+		alive = getAliveCount(),
+		total = Utils.tableSize(alivePlayers)
+	})
 
 	task.delay(GameConfig.END_MATCH_DELAY, function()
 		if currentArenaManager then
