@@ -5,41 +5,28 @@ print("🎮 GameManager iniciado")
 -- =====================================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
 
 -- =====================================================
 -- CONFIG
 -- =====================================================
-local GameConfig = require(
-	ReplicatedStorage
-		:WaitForChild("Shared")
-		:WaitForChild("Configs")
-		:WaitForChild("GameConfig")
-)
+local Shared = ReplicatedStorage:WaitForChild("Shared")
 
-local CountdownEvent = ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Remotes")
-	:WaitForChild("RoundCountdown")
+local GameConfig = require(Shared.Configs.GameConfig)
+local Utils = require(Shared.Utils.Utils)
 
-local ArenaInfoEvent = ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Remotes")
-	:WaitForChild("ArenaInfo")
+-- Network
+local Network = Shared.Network
+local CountdownNet = require(Network.RoundCountdown)
+local ArenaInfoNet = require(Network.ArenaInfo)
+local AliveCountNet = require(Network.AliveCount)
 
-local AliveCountEvent = ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Remotes")
-	:WaitForChild("AliveCount")
+-- garante criação dos RemoteEvents
+require(Network.Remotes)
 
-local Utils = require(
-	ReplicatedStorage
-		:WaitForChild("Shared")
-		:WaitForChild("Utils")
-		:WaitForChild("Utils")
-)
-
-local SoundService = game:GetService("SoundService")
-
+-- =====================================================
+-- MUSIC
+-- =====================================================
 local music = Instance.new("Sound")
 music.Name = "BackgroundMusic"
 music.Looped = true
@@ -55,40 +42,28 @@ local GameState = {
 	ENDING  = "ENDING",
 }
 
-local currentState = nil
+local currentState
 local MIN_PLAYERS = GameConfig.MIN_PLAYERS or 2
 
 -- =====================================================
 -- MATCH STATE
 -- =====================================================
 local matchRunning = false
-local alivePlayers = {}
 local victoryDeclared = false
+local alivePlayers = {}
 
 -- =====================================================
--- ARENA MANAGEMENT
+-- ARENA
 -- =====================================================
-local currentArenaManager = nil
+local currentArenaManager
 
 -- =====================================================
 -- LOBBY
 -- =====================================================
-local LobbySpawnsFolder = workspace
-	:WaitForChild("Lobby")
-	:WaitForChild("Spawns")
+local LobbySpawns = workspace:WaitForChild("Lobby"):WaitForChild("Spawns")
 
-local function getLobbySpawns()
-	local spawns = {}
-	for _, obj in ipairs(LobbySpawnsFolder:GetChildren()) do
-		if obj:IsA("SpawnLocation") then
-			table.insert(spawns, obj)
-		end
-	end
-	return spawns
-end
-
-local function teleportCharacterToLobby(character)
-	local spawns = getLobbySpawns()
+local function teleportToLobby(character)
+	local spawns = LobbySpawns:GetChildren()
 	if #spawns == 0 then return end
 
 	local hrp = character:FindFirstChild("HumanoidRootPart")
@@ -100,15 +75,15 @@ end
 local function teleportAllToLobby()
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character then
-			teleportCharacterToLobby(player.Character)
+			teleportToLobby(player.Character)
 		end
 	end
 end
 
 -- =====================================================
--- PLAYER TRACKING
+-- ALIVE TRACKING
 -- =====================================================
-local function resetAlivePlayers()
+local function resetAlive()
 	alivePlayers = {}
 	for _, player in ipairs(Players:GetPlayers()) do
 		alivePlayers[player] = true
@@ -116,156 +91,120 @@ local function resetAlivePlayers()
 end
 
 local function getAliveCount()
-	local count = 0
-	local lastAlive = nil
+	local alive = 0
+	local last
 
-	for player, alive in pairs(alivePlayers) do
-		if alive then
-			count += 1
-			lastAlive = player
+	for player, isAlive in pairs(alivePlayers) do
+		if isAlive then
+			alive += 1
+			last = player
 		end
 	end
 
-	return count, lastAlive
+	return alive, last
+end
+
+local function broadcastAlive()
+	local alive = getAliveCount()
+	AliveCountNet.send(alive, Utils.tableSize(alivePlayers))
 end
 
 local function declareVictory(winner)
 	if victoryDeclared then return end
 	victoryDeclared = true
 	matchRunning = false
-
-	if winner then
-		print("🏆 VENCEDOR:", winner.Name)
-	else
-		print("⚠️ Rodada sem vencedor")
-	end
-
 	setGameState(GameState.ENDING)
 end
 
 local function onPlayerKilled(player)
-	if not matchRunning then return end
-	if not alivePlayers[player] then return end
+	if not matchRunning or not alivePlayers[player] then return end
 
 	alivePlayers[player] = false
-	print("💀 Eliminado:", player.Name)
+	local alive, last = getAliveCount()
 
-	local aliveCount, lastAlive = getAliveCount()
+	broadcastAlive()
 
-	AliveCountEvent:FireAllClients({
-		alive = getAliveCount(),
-		total = Utils.tableSize(alivePlayers)
-	})
-
-	if aliveCount <= 1 then
-		declareVictory(lastAlive)
+	if alive <= 1 then
+		declareVictory(last)
 	end
 end
 
 -- =====================================================
 -- PLAYER LIFECYCLE
 -- =====================================================
-local function onCharacterAdded(player, character)
-	local humanoid = character:WaitForChild("Humanoid")
-
-	-- Fora da partida → sempre lobby
-	if currentState ~= GameState.PLAYING then
-		task.wait()
-		teleportCharacterToLobby(character)
-		return
-	end
-
-	-- Durante a partida → conecta morte
-	humanoid.Died:Connect(function()
-		onPlayerKilled(player)
-	end)
-end
-
-local function bindPlayers()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			onCharacterAdded(player, player.Character)
+local function bindPlayer(player)
+	local function onCharacter(character)
+		if currentState ~= GameState.PLAYING then
+			task.wait()
+			teleportToLobby(character)
+			return
 		end
 
-		player.CharacterAdded:Connect(function(character)
-			onCharacterAdded(player, character)
+		character:WaitForChild("Humanoid").Died:Connect(function()
+			onPlayerKilled(player)
 		end)
 	end
+
+	if player.Character then
+		onCharacter(player.Character)
+	end
+
+	player.CharacterAdded:Connect(onCharacter)
 end
 
 -- =====================================================
--- GAME STATES
+-- STATES
 -- =====================================================
-local function onWaitingState()
-	print("🟢 ESTADO: WAITING")
-
+local function onWaiting()
 	matchRunning = false
 	victoryDeclared = false
 
 	local waitTime = GameConfig.LOBBY_WAIT_TIME
-
-	-- 🔔 Inicia countdown no client
-	CountdownEvent:FireAllClients("start", waitTime)
+	CountdownNet.start(waitTime)
 
 	task.spawn(function()
 		for t = waitTime, 1, -1 do
 			if currentState ~= GameState.WAITING then
-				CountdownEvent:FireAllClients("stop")
+				CountdownNet.stop()
 				return
 			end
-
-			CountdownEvent:FireAllClients("update", t)
+			CountdownNet.update(t)
 			task.wait(1)
 		end
 
-		CountdownEvent:FireAllClients("stop")
-
-		if currentState == GameState.WAITING then
-			setGameState(GameState.PLAYING)
-		end
+		CountdownNet.stop()
+		setGameState(GameState.PLAYING)
 	end)
 end
 
-local function onPlayingState()
-	print("🔴 ESTADO: PLAYING")
-
+local function onPlaying()
 	matchRunning = true
-	victoryDeclared = false
-	resetAlivePlayers()
+	resetAlive()
 
-	local ArenaRegistry = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ArenaManagers"):WaitForChild("ArenaRegistry"))
+	local ArenaRegistry = require(Shared.ArenaManagers.ArenaRegistry)
+	currentArenaManager = ArenaRegistry:CreateArenaManager()
 
-	currentArenaManager = ArenaRegistry:CreateArenaManager()	
 	currentArenaManager.OnPlayerKilled = onPlayerKilled
 	currentArenaManager:Load()
 	currentArenaManager:Start(Players:GetPlayers())
 
-	local ids = GameConfig.MUSIC_IDS
-	music.SoundId = ids[math.random(#ids)]
+	music.SoundId = GameConfig.MUSIC_IDS[math.random(#GameConfig.MUSIC_IDS)]
 	music:Play()
 
-	bindPlayers()
+	for _, player in ipairs(Players:GetPlayers()) do
+		bindPlayer(player)
+	end
 
-	ArenaInfoEvent:FireAllClients({
-		name = currentArenaManager.Config.NAME		
+	ArenaInfoNet.send({
+		name = currentArenaManager.Config.NAME
 	})
 
-	AliveCountEvent:FireAllClients({
-		alive = getAliveCount(),
-		total = Utils.tableSize(alivePlayers)
-	})
+	broadcastAlive()
 end
 
-local function onEndingState()
-	print("🟡 ESTADO: ENDING")
-
-	resetAlivePlayers()
+local function onEnding()
 	teleportAllToLobby()
-
-	AliveCountEvent:FireAllClients({
-		alive = getAliveCount(),
-		total = Utils.tableSize(alivePlayers)
-	})
+	broadcastAlive()
 
 	task.delay(GameConfig.END_MATCH_DELAY, function()
 		if currentArenaManager then
@@ -273,37 +212,23 @@ local function onEndingState()
 			currentArenaManager:Destroy()
 			currentArenaManager = nil
 		end
-
 		setGameState(GameState.WAITING)
 	end)
 end
 
 -- =====================================================
--- GAME STATE CORE
+-- CORE
 -- =====================================================
-function setGameState(newState)
-	if currentState == newState then return end
+function setGameState(state)
+	if currentState == state then return end
+	currentState = state
 
-	print("🔄 GameState:", currentState, "->", newState)
-	currentState = newState
-
-	if newState == GameState.WAITING then
-		onWaitingState()
-	elseif newState == GameState.PLAYING then
-		onPlayingState()
-	elseif newState == GameState.ENDING then
-		onEndingState()
-	end
-end
-
--- =====================================================
--- START CONDITIONS
--- =====================================================
-local function tryStartGame()
-	if #Players:GetPlayers() >= MIN_PLAYERS then
-		setGameState(GameState.WAITING)
-	else
-		print("⏳ Aguardando jogadores...")
+	if state == GameState.WAITING then
+		onWaiting()
+	elseif state == GameState.PLAYING then
+		onPlaying()
+	elseif state == GameState.ENDING then
+		onEnding()
 	end
 end
 
@@ -311,19 +236,16 @@ end
 -- BOOT
 -- =====================================================
 task.wait(2)
-tryStartGame()
 
-Players.PlayerAdded:Connect(function()
-	tryStartGame()
-end)
+local function tryStart()
+	if #Players:GetPlayers() >= MIN_PLAYERS then
+		setGameState(GameState.WAITING)
+	end
+end
 
+tryStart()
+
+Players.PlayerAdded:Connect(tryStart)
 Players.PlayerRemoving:Connect(function(player)
-	if alivePlayers[player] then
-		alivePlayers[player] = false
-	end
-
-	local aliveCount, lastAlive = getAliveCount()
-	if matchRunning and aliveCount <= 1 then
-		declareVictory(lastAlive)
-	end
+	alivePlayers[player] = nil
 end)

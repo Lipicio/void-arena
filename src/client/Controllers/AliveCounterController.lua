@@ -2,13 +2,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Controller = {}
-
 local player = Players.LocalPlayer
 
-local AliveEvent = ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Remotes")
-	:WaitForChild("AliveCount")
+local Network = ReplicatedStorage.Shared.Network
+local AliveCount = require(Network.AliveCount)
 
 local frame, label
 
@@ -26,7 +23,7 @@ end)
 
 resolveUI()
 
-AliveEvent.OnClientEvent:Connect(function(data)
+AliveCount.onClient(function(data)
 	if not frame or not label then resolveUI() end
 	if not data then return end
 

@@ -2,13 +2,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Controller = {}
-
 local player = Players.LocalPlayer
 
-local ArenaInfoEvent = ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Remotes")
-	:WaitForChild("ArenaInfo")
+local Network = ReplicatedStorage.Shared.Network
+local ArenaInfo = require(Network.ArenaInfo)
 
 local frame, label
 
@@ -26,8 +23,7 @@ end)
 
 resolveUI()
 
-ArenaInfoEvent.OnClientEvent:Connect(function(data)    
-
+ArenaInfo.onClient(function(data)
 	if not frame or not label then resolveUI() end
 	if not data or not data.name then return end
 
