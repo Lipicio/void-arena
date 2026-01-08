@@ -30,7 +30,7 @@ require(Network.Remotes)
 local music = Instance.new("Sound")
 music.Name = "BackgroundMusic"
 music.Looped = true
-music.Volume = 0.4
+music.Volume = 0.05
 music.Parent = SoundService
 
 -- =====================================================
