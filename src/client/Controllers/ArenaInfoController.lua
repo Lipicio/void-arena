@@ -11,7 +11,7 @@ local frame, label
 
 local function resolveUI()
 	local hud = player:WaitForChild("PlayerGui"):WaitForChild("HUD")
-	frame = hud:WaitForChild("ArenaInfo")
+	frame = hud:WaitForChild("TopLeftHUD"):WaitForChild("ArenaPill")
 	label = frame:WaitForChild("Text")
 	frame.Visible = false
 end
