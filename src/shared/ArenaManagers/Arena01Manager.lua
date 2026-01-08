@@ -38,7 +38,7 @@ setmetatable(Arena01Manager, ArenaBase)
 -- CONSTRUCTOR
 -- =====================================================
 function Arena01Manager.new()
-	local self = ArenaBase.new("Arena_01")
+	local self = ArenaBase.new("Arena_01", ArenaConfig)
 	setmetatable(self, Arena01Manager)
 	return self
 end

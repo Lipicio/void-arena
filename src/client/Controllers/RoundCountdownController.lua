@@ -2,20 +2,14 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Controller = {}
-
 local player = Players.LocalPlayer
 
-local CountdownEvent = ReplicatedStorage
-	:WaitForChild("Shared")
-	:WaitForChild("Remotes")
-	:WaitForChild("RoundCountdown")
+local Network = ReplicatedStorage.Shared.Network
+local Countdown = require(Network.RoundCountdown)
 
-local container = nil
-local textLabel = nil
+local container
+local textLabel
 
--- =====================================================
--- Utils
--- =====================================================
 local function resolveUI()
 	local playerGui = player:WaitForChild("PlayerGui")
 	local hud = playerGui:WaitForChild("HUD", 5)
@@ -40,34 +34,23 @@ local function show(value)
 	end
 end
 
--- =====================================================
--- Re-resolve UI quando o character respawnar
--- =====================================================
 player.CharacterAdded:Connect(function()
 	task.wait(0.2)
 	resolveUI()
 	hide()
 end)
 
--- Primeira resolução
 resolveUI()
 hide()
 
--- =====================================================
--- Remote listener
--- =====================================================
-CountdownEvent.OnClientEvent:Connect(function(action, value)
+Countdown.onClient(function(action, value)
 	if not container or not textLabel then
 		resolveUI()
 		if not container or not textLabel then return end
 	end
 
-	if action == "start" then
+	if action == "start" or action == "update" then
 		show(value)
-
-	elseif action == "update" then
-		show(value)
-
 	elseif action == "stop" then
 		hide()
 	end
