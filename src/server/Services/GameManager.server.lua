@@ -5,7 +5,6 @@ print("🎮 GameManager iniciado")
 -- =====================================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SoundService = game:GetService("SoundService")
 
 -- =====================================================
 -- CONFIG
@@ -20,18 +19,10 @@ local Network = Shared.Network
 local CountdownNet = require(Network.RoundCountdown)
 local ArenaInfoNet = require(Network.ArenaInfo)
 local AliveCountNet = require(Network.AliveCount)
+local MusicContext = require(Network.MusicContext)
 
 -- garante criação dos RemoteEvents
 require(Network.Remotes)
-
--- =====================================================
--- MUSIC
--- =====================================================
-local music = Instance.new("Sound")
-music.Name = "BackgroundMusic"
-music.Looped = true
-music.Volume = 0.05
-music.Parent = SoundService
 
 -- =====================================================
 -- GAME STATE
@@ -159,6 +150,8 @@ local function onWaiting()
 	matchRunning = false
 	victoryDeclared = false
 
+	MusicContext.send("LOBBY")
+
 	local waitTime = GameConfig.LOBBY_WAIT_TIME
 	CountdownNet.start(waitTime)
 
@@ -188,9 +181,6 @@ local function onPlaying()
 	currentArenaManager:Load()
 	currentArenaManager:Start(Players:GetPlayers())
 
-	music.SoundId = GameConfig.MUSIC_IDS[math.random(#GameConfig.MUSIC_IDS)]
-	music:Play()
-
 	for _, player in ipairs(Players:GetPlayers()) do
 		bindPlayer(player)
 	end
@@ -199,12 +189,16 @@ local function onPlaying()
 		name = currentArenaManager.Config.NAME
 	})
 
+	MusicContext.send("ARENA", currentArenaManager.Config.MUSIC_IDS)
+
 	broadcastAlive()
 end
 
 local function onEnding()
 	teleportAllToLobby()
 	broadcastAlive()
+
+	MusicContext.send("LOBBY")
 
 	task.delay(GameConfig.END_MATCH_DELAY, function()
 		if currentArenaManager then
