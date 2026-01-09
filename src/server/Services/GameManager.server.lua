@@ -1,5 +1,7 @@
 print("🎮 GameManager iniciado")
 
+local transitioning = false
+
 -- =====================================================
 -- SERVICES
 -- =====================================================
@@ -171,6 +173,12 @@ local function onWaiting()
 end
 
 local function onPlaying()
+
+	if currentArenaManager then
+		warn("⚠️ Arena já ativa, ignorando PLAYING duplicado")
+		return
+	end
+
 	matchRunning = true
 	resetAlive()
 
@@ -215,6 +223,9 @@ end
 -- =====================================================
 function setGameState(state)
 	if currentState == state then return end
+	if transitioning then return end
+
+	transitioning = true
 	currentState = state
 
 	if state == GameState.WAITING then
@@ -224,7 +235,12 @@ function setGameState(state)
 	elseif state == GameState.ENDING then
 		onEnding()
 	end
+
+	task.defer(function()
+		transitioning = false
+	end)
 end
+
 
 -- =====================================================
 -- BOOT
@@ -239,7 +255,20 @@ end
 
 tryStart()
 
-Players.PlayerAdded:Connect(tryStart)
+Players.PlayerAdded:Connect(function(player)
+	if currentState == GameState.PLAYING then
+		-- player entra no meio da partida → só fica no lobby
+		task.delay(1, function()
+			if player.Character then
+				teleportToLobby(player.Character)
+			end
+		end)
+		return
+	end
+
+	tryStart()
+end)
+
 Players.PlayerRemoving:Connect(function(player)
 	alivePlayers[player] = nil
 end)
