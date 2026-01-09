@@ -21,4 +21,5 @@ return {
 	RoundCountdown = get("RoundCountdown"),
 	ArenaInfo = get("ArenaInfo"),
 	AliveCount = get("AliveCount"),
+	MusicContext = get("MusicContext"),
 }

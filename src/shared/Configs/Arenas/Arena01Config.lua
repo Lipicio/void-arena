@@ -15,4 +15,10 @@ Arena01Config.GROUNDS_PER_CYCLE = 5
 -- Tempo de delay visual antes do chão cair
 Arena01Config.GROUND_WARNING_TIME = 0.8
 
+-- 🎵 Músicas
+Arena01Config.MUSIC_IDS = {
+	"rbxassetid://142376088"
+}
+
+
 return Arena01Config
