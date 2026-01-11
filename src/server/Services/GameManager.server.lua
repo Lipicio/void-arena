@@ -51,29 +51,6 @@ local alivePlayers = {}
 local currentArenaManager
 
 -- =====================================================
--- LOBBY
--- =====================================================
-local LobbySpawns = workspace:WaitForChild("Lobby"):WaitForChild("Spawns")
-
-local function teleportToLobby(character)
-	local spawns = LobbySpawns:GetChildren()
-	if #spawns == 0 then return end
-
-	local hrp = character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-
-	hrp.CFrame = spawns[math.random(#spawns)].CFrame + Vector3.new(0, 3, 0)
-end
-
-local function teleportAllToLobby()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Character then
-			teleportToLobby(player.Character)
-		end
-	end
-end
-
--- =====================================================
 -- ALIVE TRACKING
 -- =====================================================
 local function resetAlive()
@@ -123,15 +100,11 @@ local function onPlayerKilled(player)
 end
 
 -- =====================================================
--- PLAYER LIFECYCLE
+-- PLAYER BIND (SOMENTE DURANTE PLAYING)
 -- =====================================================
 local function bindPlayer(player)
 	local function onCharacter(character)
-		if currentState ~= GameState.PLAYING then
-			task.wait()
-			teleportToLobby(character)
-			return
-		end
+		if currentState ~= GameState.PLAYING then return end
 
 		character:WaitForChild("Humanoid").Died:Connect(function()
 			onPlayerKilled(player)
@@ -173,7 +146,6 @@ local function onWaiting()
 end
 
 local function onPlaying()
-
 	if currentArenaManager then
 		warn("⚠️ Arena já ativa, ignorando PLAYING duplicado")
 		return
@@ -203,9 +175,6 @@ local function onPlaying()
 end
 
 local function onEnding()
-	teleportAllToLobby()
-	broadcastAlive()
-
 	MusicContext.send("LOBBY")
 
 	task.delay(GameConfig.END_MATCH_DELAY, function()
@@ -241,7 +210,6 @@ function setGameState(state)
 	end)
 end
 
-
 -- =====================================================
 -- BOOT
 -- =====================================================
@@ -255,18 +223,10 @@ end
 
 tryStart()
 
-Players.PlayerAdded:Connect(function(player)
-	if currentState == GameState.PLAYING then
-		-- player entra no meio da partida → só fica no lobby
-		task.delay(1, function()
-			if player.Character then
-				teleportToLobby(player.Character)
-			end
-		end)
-		return
+Players.PlayerAdded:Connect(function()
+	if currentState ~= GameState.PLAYING then
+		tryStart()
 	end
-
-	tryStart()
 end)
 
 Players.PlayerRemoving:Connect(function(player)
